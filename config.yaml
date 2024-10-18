@@ -1,0 +1,27 @@
+# config.yaml
+server:
+  address: ":53"  # 监听地址和端口
+  cache_expiration: 5m  # 缓存过期时间, 格式: 5m, 10s 等
+
+upstream:
+  dns_servers:
+    - "8.8.8.8:53"
+    - "8.8.4.4:53"
+
+rewrite:
+  rules:
+    - type: "DOMAIN-SUFFIX"
+      value: "example.com"
+      target: "127.0.0.1"
+    - type: "DOMAIN"
+      value: "www.example.com"
+      target: "192.168.1.1"
+    - type: "DOMAIN-KEYWORD"
+      value: "example"
+      target: "127.0.0.2"
+#    - type: "RULE-SET"
+#      value: https://github.com/ACL4SSR/ACL4SSR/raw/master/Clash/OneDrive.list  # 规则集合文件路径
+#      target: "127.0.0.3"
+#    - type: "RULE-SET"
+#      value: "rewrites/ruleset.list"  # 规则集合文件路径
+#      target: "127.0.0.4"
