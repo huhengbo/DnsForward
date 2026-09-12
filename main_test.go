@@ -50,14 +50,14 @@ func TestClampTTL(t *testing.T) {
 
 func TestParseUpstreamEndpoints(t *testing.T) {
 	eps, err := parseUpstreamEndpoints(
-		[]string{"8.8.8.8", "tcp://1.1.1.1:54", "tls://1.0.0.1@cloudflare-dns.com"},
+		[]string{"8.8.8.8", "tcp://1.1.1.1:54", "tls://1.0.0.1@cloudflare-dns.com", "tls://cloudflare-dns.com"},
 		"udp",
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(eps) != 3 {
-		t.Fatalf("expected 3 endpoints, got %d", len(eps))
+	if len(eps) != 4 {
+		t.Fatalf("expected 4 endpoints, got %d", len(eps))
 	}
 	if eps[0].Network != "udp" || eps[0].Address != "8.8.8.8:53" {
 		t.Fatalf("unexpected endpoint %#v", eps[0])
@@ -67,6 +67,18 @@ func TestParseUpstreamEndpoints(t *testing.T) {
 	}
 	if eps[2].Network != "tcp-tls" || eps[2].ServerName != "cloudflare-dns.com" || eps[2].Address != "1.0.0.1:853" {
 		t.Fatalf("unexpected tls endpoint %#v", eps[2])
+	}
+	if eps[3].Network != "tcp-tls" || eps[3].ServerName != "cloudflare-dns.com" || eps[3].Address != "cloudflare-dns.com:853" {
+		t.Fatalf("unexpected hostname tls endpoint %#v", eps[3])
+	}
+}
+
+func TestParseUpstreamEndpointsRejectsUnverifiableDoT(t *testing.T) {
+	if _, err := parseUpstreamEndpoints([]string{"tls://1.1.1.1"}, "udp"); err == nil {
+		t.Fatal("expected DoT IP without TLS server name to fail")
+	}
+	if _, err := parseUpstreamEndpoints([]string{"tls://1.1.1.1@"}, "udp"); err == nil {
+		t.Fatal("expected empty TLS server name to fail")
 	}
 }
 
@@ -80,10 +92,60 @@ func TestMatchRule(t *testing.T) {
 	if got := matchRule("a.example.com.", matcher); got != "1.1.1.1" {
 		t.Fatalf("expected domain exact match")
 	}
+	if got := matchRule("example.com.", matcher); got != "2.2.2.2" {
+		t.Fatalf("expected suffix root match")
+	}
 	if got := matchRule("b.example.com.", matcher); got != "2.2.2.2" {
 		t.Fatalf("expected suffix match")
 	}
+	if got := matchRule("a.b.example.com.", matcher); got != "2.2.2.2" {
+		t.Fatalf("expected nested suffix match")
+	}
+	if got := matchRule("notexample.com.", matcher); got != "" {
+		t.Fatalf("expected suffix boundary mismatch, got %q", got)
+	}
+	if got := matchRule("example.com.evil.", matcher); got != "" {
+		t.Fatalf("expected non-suffix domain to remain unmatched, got %q", got)
+	}
 	if got := matchRule("images.googleusercontent.com.", matcher); got != "3.3.3.3" {
 		t.Fatalf("expected keyword match")
+	}
+}
+
+func TestBuildRewriteRecord(t *testing.T) {
+	cases := []struct {
+		name   string
+		qtype  uint16
+		ip     string
+		ok     bool
+		rrtype uint16
+	}{
+		{name: "A with IPv4", qtype: dns.TypeA, ip: "192.0.2.10", ok: true, rrtype: dns.TypeA},
+		{name: "AAAA with IPv6", qtype: dns.TypeAAAA, ip: "2001:db8::10", ok: true, rrtype: dns.TypeAAAA},
+		{name: "AAAA with IPv4", qtype: dns.TypeAAAA, ip: "192.0.2.10", ok: false},
+		{name: "A with IPv6", qtype: dns.TypeA, ip: "2001:db8::10", ok: false},
+		{name: "TXT with IPv4", qtype: dns.TypeTXT, ip: "192.0.2.10", ok: false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			q := dns.Question{Name: "example.com.", Qtype: tc.qtype, Qclass: dns.ClassINET}
+			rr, ok := buildRewriteRecord(q, net.ParseIP(tc.ip), 60)
+			if ok != tc.ok {
+				t.Fatalf("expected ok=%v, got %v", tc.ok, ok)
+			}
+			if !tc.ok {
+				if rr != nil {
+					t.Fatalf("expected nil record, got %T", rr)
+				}
+				return
+			}
+			if rr.Header().Rrtype != tc.rrtype {
+				t.Fatalf("expected rrtype %d, got %d", tc.rrtype, rr.Header().Rrtype)
+			}
+			if rr.Header().Ttl != 60 {
+				t.Fatalf("expected ttl 60, got %d", rr.Header().Ttl)
+			}
+		})
 	}
 }
