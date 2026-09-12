@@ -1,6 +1,7 @@
 # DnsForward
 
 [![CI](https://github.com/huhengbo/DnsForward/actions/workflows/ci.yml/badge.svg)](https://github.com/huhengbo/DnsForward/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 DnsForward 是一个轻量级 DNS 转发与重写服务，面向本机或内网使用。它支持 UDP/TCP DNS、多个上游并发查询、本地缓存、域名重写、远程规则集、DoT、Prometheus 指标和配置热加载。
 
@@ -175,6 +176,7 @@ GitHub Actions 还会执行格式检查、`staticcheck`、`govulncheck`，并验
 ├── .github/              # CI、Release、Issue/PR 模板、Dependabot
 ├── CONTRIBUTING.md
 ├── SECURITY.md
+├── LICENSE
 ├── go.mod
 ├── go.sum
 └── README.md
@@ -185,3 +187,7 @@ GitHub Actions 还会执行格式检查、`staticcheck`、`govulncheck`，并验
 ## 贡献
 
 提交修改前请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。安全问题请参考 [SECURITY.md](SECURITY.md)。
+
+## License
+
+本项目使用 [MIT License](LICENSE)。
