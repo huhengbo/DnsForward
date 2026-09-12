@@ -1,0 +1,32 @@
+server:
+  address: "127.0.0.1:53"
+  metrics_address: "127.0.0.1:9090"
+  allow_cidrs:
+    - "127.0.0.0/8"
+    - "::1/128"
+  max_concurrent_queries: 256
+  cache_expiration: 5m
+  negative_cache_ttl: 1m
+  min_ttl: 10s
+  max_ttl: 1h
+
+upstream:
+  dns_servers:
+    - "8.8.8.8:53"
+    - "tls://1.1.1.1@cloudflare-dns.com"
+  timeout: 2s
+  protocol: udp
+
+fetch:
+  timeout: 10s
+  retry: 3
+
+rewrite:
+  default_ttl: 10m
+  rules:
+    - type: "DOMAIN"
+      value: "example.com"
+      target: "192.0.2.10"
+    - type: "DOMAIN-SUFFIX"
+      value: "example.org"
+      target: "2001:db8::10"
