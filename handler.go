@@ -19,6 +19,26 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 		return
 	}
 
+	clientIP, err := clientIPFromAddr(w.RemoteAddr())
+	if err != nil || !isClientAllowed(clientIP, rt.allowCIDRs) {
+		metricClientRejected.Inc()
+		if err != nil {
+			serviceLogger(fmt.Sprintf("拒绝无法识别来源的 DNS 请求: %v", err), 31, true)
+		} else {
+			serviceLogger(fmt.Sprintf("ACL 拒绝 DNS 请求: %s", clientIP), 31, true)
+		}
+		writeDNSRcode(w, r, dns.RcodeRefused)
+		return
+	}
+
+	if !tryAcquireQuerySlot(rt.querySlots) {
+		metricOverloadRejected.Inc()
+		serviceLogger(fmt.Sprintf("并发查询已达上限，拒绝请求: %s", clientIP), 31, true)
+		writeDNSRcode(w, r, dns.RcodeServerFailure)
+		return
+	}
+	defer releaseQuerySlot(rt.querySlots)
+
 	if len(r.Question) > 0 {
 		question := r.Question[0]
 		domain := question.Name
