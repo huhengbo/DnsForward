@@ -34,7 +34,7 @@ func parseAllowedCIDRs(values []string) ([]netip.Prefix, error) {
 func normalizePrefix(prefix netip.Prefix) netip.Prefix {
 	addr := prefix.Addr().WithZone("")
 	bits := prefix.Bits()
-	if addr.Is4In6() {
+	if addr.Is4In6() && bits >= 96 {
 		addr = addr.Unmap()
 		bits -= 96
 	}
