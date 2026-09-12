@@ -16,7 +16,7 @@ DnsForward 是一个轻量级 DNS 转发与重写服务，面向本机或内网�
 - 全局并发查询限制
 - Prometheus `/metrics` 和 `/healthz`
 - Unix `SIGHUP` 配置热加载
-- 内置 Web 管理页面
+- 内置 Web 管理与单用户登录
 - Linux、macOS、Windows 构建验证
 
 ## 快速开始
@@ -91,26 +91,52 @@ sudo dnsforwardctl uninstall
 
 ## Web 管理
 
-Web 管理直接内置在 `dnsforward` 二进制中，不需要额外部署前端或后端服务。
+Web 管理直接内置在 `dnsforward` 二进制中，不需要额外部署前端或后端服务。界面提供状态卡片、配置编辑、最近日志和观测入口，并适配桌面与移动端。
 
 示例配置：
 
 ```yaml
 server:
   web_address: "127.0.0.1:8080"
+  web_password_hash: ""
 ```
 
-当前一期支持：
+当前支持：
 
-- 查看运行状态和版本
+- 查看运行状态、版本、DNS/Web 监听地址和配置路径
 - 查看、编辑完整 YAML 配置
 - 管理 upstream、Rewrite 和 `RULE-SET`
 - 保存前完整配置校验
 - 保存后立即热重载
 - 查看 `/healthz` 与 `/metrics`
 - 查看当前进程最近 200 条日志
+- 可选单用户登录认证与退出登录
 
-当前 Web 管理**没有登录认证**，因此 `web_address` 只允许 loopback 地址（`127.0.0.1`、`::1` 或 `localhost`），不能配置为 `0.0.0.0` 或局域网地址。后续增加认证后再考虑远程管理。
+### 设置 Web 管理密码
+
+先生成密码哈希：
+
+```bash
+dnsforward -hash-password
+```
+
+命令从 stdin 读取密码并输出形如下面的带盐迭代哈希：
+
+```text
+pbkdf2-sha256$200000$...$...
+```
+
+把完整输出写入配置：
+
+```yaml
+server:
+  web_address: "127.0.0.1:8080"
+  web_password_hash: "pbkdf2-sha256$200000$...$..."
+```
+
+重载或重启后，Web 页面会先进入登录页。密码明文不会写入配置；会话仅保存在当前进程内，Cookie 使用 `HttpOnly` 与 `SameSite=Strict`，服务重启后需要重新登录。修改 `web_password_hash` 会立即清除已有会话。
+
+当前即使启用登录认证，`web_address` 仍只允许 loopback 地址（`127.0.0.1`、`::1` 或 `localhost`）。本期不直接开放无 TLS 的远程登录；需要远程访问时建议后续通过带 HTTPS 的反向代理或专门的安全方案实现。
 
 修改 `web_address` 本身后需要重启进程才能切换监听地址；其他运行配置会在保存后立即应用。
 
@@ -125,6 +151,7 @@ server:
   address: "127.0.0.1:53"
   metrics_address: "127.0.0.1:9090"
   web_address: "127.0.0.1:8080"
+  web_password_hash: ""
   allow_cidrs:
     - "127.0.0.0/8"
     - "::1/128"
@@ -153,7 +180,8 @@ rewrite:
 
 - `address`: DNS UDP/TCP 监听地址。
 - `metrics_address`: Prometheus 与健康检查监听地址；留空可关闭。
-- `web_address`: 内置 Web 管理监听地址；留空关闭，一期只允许 loopback。
+- `web_address`: 内置 Web 管理监听地址；留空关闭，当前只允许 loopback。
+- `web_password_hash`: 可选的 Web 管理密码哈希；留空时不要求登录。
 - `allow_cidrs`: 允许访问 DNS 服务的客户端网段。省略时默认只允许 loopback。
 - `max_concurrent_queries`: 同时处理的查询上限，默认 256。
 - `cache_expiration`: 无可用 RR TTL 时使用的默认本地缓存时间。
@@ -200,7 +228,7 @@ server:
 
 未授权客户端会收到 `REFUSED`，达到并发上限时返回 `SERVFAIL`，两者都不会继续访问上游。
 
-不要把 metrics 端口无保护地暴露到公网；当前 Web 管理也不允许监听非 loopback 地址。
+不要把 metrics 端口无保护地暴露到公网；Web 管理当前也不允许监听非 loopback 地址。
 
 ## 指标与健康检查
 
@@ -211,7 +239,7 @@ GET /metrics
 GET /healthz
 ```
 
-Web 管理端口也提供相同的 `/metrics` 和 `/healthz` 路径。
+Web 管理端口也提供相同的 `/metrics` 和 `/healthz` 路径；配置了 Web 密码后，这两个 Web 端口路径同样需要登录会话。
 
 ## 热加载
 
