@@ -44,6 +44,10 @@ dig @127.0.0.1 example.com
 
 如果不希望直接使用 53 端口，可以把 `server.address` 改为例如 `127.0.0.1:5353`。
 
+### 预编译版本
+
+带 `v` 前缀的 tag 会自动发布 Linux、macOS、Windows 的 amd64/arm64 压缩包。每个压缩包包含可执行文件和 `config.example.yaml`，Release 同时提供 `checksums.txt` 用于 SHA256 校验。
+
 ## 配置
 
 完整示例见 [`configs/config.example.yaml`](configs/config.example.yaml)。配置使用严格 YAML 解析，无法识别的字段会在启动时直接报错。
@@ -168,7 +172,7 @@ GitHub Actions 还会执行格式检查、`staticcheck`、`govulncheck`，并验
 │   └── dnsforward/       # DNS 服务实现、入口与测试
 ├── configs/
 │   └── config.example.yaml
-├── .github/              # CI、Issue/PR 模板、Dependabot
+├── .github/              # CI、Release、Issue/PR 模板、Dependabot
 ├── CONTRIBUTING.md
 ├── SECURITY.md
 ├── go.mod
