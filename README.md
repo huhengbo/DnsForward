@@ -49,6 +49,48 @@ dig @127.0.0.1 example.com
 
 带 `v` 前缀的 tag 会自动发布 Linux、macOS、Windows 的 amd64/arm64 压缩包。每个压缩包包含可执行文件和 `config.example.yaml`，Release 同时提供 `checksums.txt` 用于 SHA256 校验。
 
+## Linux 一键安装
+
+当前一键安装与服务管理支持 **Linux + systemd**，支持 amd64 / arm64。安装脚本会从最新 GitHub Release 下载对应架构的程序，并使用 `checksums.txt` 校验 SHA256。
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/huhengbo/DnsForward/master/scripts/install.sh | sudo bash
+```
+
+也可以安装指定版本：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/huhengbo/DnsForward/master/scripts/install.sh | sudo bash -s -- install v1.1.0
+```
+
+安装后文件位置：
+
+```text
+/usr/local/bin/dnsforward
+/usr/local/bin/dnsforwardctl
+/etc/dnsforward/config.yaml
+/etc/systemd/system/dnsforward.service
+```
+
+常用管理命令：
+
+```bash
+sudo dnsforwardctl start
+sudo dnsforwardctl stop
+sudo dnsforwardctl restart
+sudo dnsforwardctl status
+sudo dnsforwardctl logs
+sudo dnsforwardctl uninstall
+```
+
+`uninstall` 会移除 systemd 服务、`dnsforward` 和 `dnsforwardctl`，但会保留 `/etc/dnsforward/config.yaml`，便于后续重新安装时继续使用原配置。
+
+修改 `/etc/dnsforward/config.yaml` 后，可直接重启服务：
+
+```bash
+sudo dnsforwardctl restart
+```
+
 ## 配置
 
 完整示例见 [`configs/config.example.yaml`](configs/config.example.yaml)。配置使用严格 YAML 解析，无法识别的字段会在启动时直接报错。
@@ -161,9 +203,10 @@ go test ./...
 go test -race ./...
 go vet ./...
 go build ./cmd/dnsforward
+bash -n scripts/install.sh
 ```
 
-GitHub Actions 还会执行格式检查、`staticcheck`、`govulncheck`，并验证 Linux/macOS/Windows 的 amd64/arm64 构建。
+GitHub Actions 还会执行格式检查、安装脚本语法检查、`staticcheck`、`govulncheck`，并验证 Linux/macOS/Windows 的 amd64/arm64 构建。
 
 ## 项目结构
 
@@ -173,6 +216,8 @@ GitHub Actions 还会执行格式检查、`staticcheck`、`govulncheck`，并验
 │   └── dnsforward/       # DNS 服务实现、入口与测试
 ├── configs/
 │   └── config.example.yaml
+├── scripts/
+│   └── install.sh        # Linux 一键安装与 systemd 管理
 ├── .github/              # CI、Release、Issue/PR 模板、Dependabot
 ├── CONTRIBUTING.md
 ├── SECURITY.md
