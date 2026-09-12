@@ -23,6 +23,8 @@ var (
 	metricUpstreamFailure  = prometheus.NewCounter(prometheus.CounterOpts{Name: "dnsforward_upstream_failure_total", Help: "上游查询失败数"})
 	metricUpstreamLatency  = prometheus.NewHistogram(prometheus.HistogramOpts{Name: "dnsforward_upstream_duration_seconds", Help: "上游查询耗时", Buckets: prometheus.DefBuckets})
 	metricReloadCount      = prometheus.NewCounter(prometheus.CounterOpts{Name: "dnsforward_reload_total", Help: "配置热加载次数"})
+	metricClientRejected   = prometheus.NewCounter(prometheus.CounterOpts{Name: "dnsforward_client_rejected_total", Help: "ACL 拒绝的 DNS 请求数"})
+	metricOverloadRejected = prometheus.NewCounter(prometheus.CounterOpts{Name: "dnsforward_overload_rejected_total", Help: "并发上限拒绝的 DNS 请求数"})
 	metricsOnce            sync.Once
 )
 
@@ -39,6 +41,8 @@ func ensureMetricsRegistered() {
 			metricUpstreamFailure,
 			metricUpstreamLatency,
 			metricReloadCount,
+			metricClientRejected,
+			metricOverloadRejected,
 		)
 	})
 }
