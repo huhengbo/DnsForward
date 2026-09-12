@@ -25,8 +25,11 @@ DnsForward 是一个轻量级 DNS 转发与重写服务，面向本机或内网�
 git clone https://github.com/huhengbo/DnsForward.git
 cd DnsForward
 
+cp configs/config.example.yaml config.yaml
 go run ./cmd/dnsforward -c config.yaml
 ```
+
+`config.yaml` 是本地运行配置，默认不会提交到 Git。仓库只跟踪中性的示例配置 `configs/config.example.yaml`。
 
 默认示例配置只监听本机：
 
@@ -42,6 +45,8 @@ dig @127.0.0.1 example.com
 如果不希望直接使用 53 端口，可以把 `server.address` 改为例如 `127.0.0.1:5353`。
 
 ## 配置
+
+完整示例见 [`configs/config.example.yaml`](configs/config.example.yaml)。配置使用严格 YAML 解析，无法识别的字段会在启动时直接报错。
 
 核心配置示例：
 
@@ -65,19 +70,12 @@ upstream:
   timeout: 2s
   protocol: udp
 
-fetch:
-  timeout: 10s
-  retry: 3
-
 rewrite:
   default_ttl: 10m
   rules:
     - type: "DOMAIN"
       value: "example.com"
       target: "192.0.2.10"
-    - type: "DOMAIN-SUFFIX"
-      value: "example.org"
-      target: "2001:db8::10"
 ```
 
 ### server
@@ -113,7 +111,7 @@ tls://1.1.1.1@cloudflare-dns.com
 - `DOMAIN-KEYWORD`: 域名关键字
 - `RULE-SET`: 本地文件或 HTTP(S) 规则集
 
-A 查询只会使用 IPv4 target，AAAA 查询只会使用 IPv6 target；其他记录类型继续查询上游。
+每条重写规则必须提供非空 `value` 和有效 IP `target`。A 查询只会使用 IPv4 target，AAAA 查询只会使用 IPv6 target；其他记录类型继续查询上游。
 
 ## 安全说明
 
@@ -168,8 +166,9 @@ GitHub Actions 还会执行格式检查、`staticcheck`、`govulncheck`，并验
 .
 ├── cmd/
 │   └── dnsforward/       # DNS 服务实现、入口与测试
+├── configs/
+│   └── config.example.yaml
 ├── .github/              # CI、Issue/PR 模板、Dependabot
-├── config.yaml           # 示例配置
 ├── CONTRIBUTING.md
 ├── SECURITY.md
 ├── go.mod
