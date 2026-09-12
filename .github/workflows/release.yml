@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version, for example v1.1.0"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -24,16 +30,33 @@ jobs:
           cache: true
           cache-dependency-path: go.sum
 
-      - name: Build release archives
+      - name: Resolve release version
+        id: release
         shell: bash
         run: |
           set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            version="${{ inputs.version }}"
+          else
+            version="${GITHUB_REF_NAME}"
+          fi
+          if [[ ! "${version}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid release version: ${version}" >&2
+            exit 1
+          fi
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
 
-          version="${GITHUB_REF_NAME}"
+      - name: Build release archives
+        shell: bash
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+
           mkdir -p dist
 
           while read -r goos goarch; do
-            package="dnsforward_${version}_${goos}_${goarch}"
+            package="dnsforward_${VERSION}_${goos}_${goarch}"
             workdir="$(mktemp -d)"
             binary="dnsforward"
             if [[ "${goos}" == "windows" ]]; then
@@ -41,7 +64,7 @@ jobs:
             fi
 
             GOOS="${goos}" GOARCH="${goarch}" CGO_ENABLED=0 \
-              go build -trimpath -ldflags "-s -w -X main.version=${version}" \
+              go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
               -o "${workdir}/${binary}" ./cmd/dnsforward
 
             cp configs/config.example.yaml "${workdir}/config.example.yaml"
@@ -67,4 +90,15 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${GITHUB_REF_NAME}" dist/* --title "${GITHUB_REF_NAME}" --generate-notes
+          VERSION: ${{ steps.release.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          notes="docs/releases/${VERSION}.md"
+          args=("${VERSION}" dist/* --title "${VERSION}" --target "${GITHUB_SHA}")
+          if [[ -f "${notes}" ]]; then
+            args+=(--notes-file "${notes}")
+          else
+            args+=(--generate-notes)
+          fi
+          gh release create "${args[@]}"
