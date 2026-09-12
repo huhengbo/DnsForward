@@ -14,12 +14,14 @@ import (
 
 type Config struct {
 	Server struct {
-		Address          string `yaml:"address"`
-		CacheExpiration  string `yaml:"cache_expiration"`
-		NegativeCacheTTL string `yaml:"negative_cache_ttl"`
-		MinTTL           string `yaml:"min_ttl"`
-		MaxTTL           string `yaml:"max_ttl"`
-		MetricsAddress   string `yaml:"metrics_address"`
+		Address              string   `yaml:"address"`
+		CacheExpiration      string   `yaml:"cache_expiration"`
+		NegativeCacheTTL     string   `yaml:"negative_cache_ttl"`
+		MinTTL               string   `yaml:"min_ttl"`
+		MaxTTL               string   `yaml:"max_ttl"`
+		MetricsAddress       string   `yaml:"metrics_address"`
+		AllowCIDRs           []string `yaml:"allow_cidrs"`
+		MaxConcurrentQueries int      `yaml:"max_concurrent_queries"`
 	} `yaml:"server"`
 
 	Upstream struct {
@@ -45,6 +47,9 @@ func validateConfig(cfg *Config) error {
 	}
 	if strings.TrimSpace(cfg.Server.CacheExpiration) == "" {
 		return errors.New("server.cache_expiration 未配置")
+	}
+	if cfg.Server.MaxConcurrentQueries < 0 {
+		return errors.New("server.max_concurrent_queries 不能为负数")
 	}
 	if len(cfg.Upstream.DNSServers) == 0 {
 		return errors.New("upstream.dns_servers 不能为空")
@@ -126,6 +131,16 @@ func buildRuntimeFromConfig(newCfg Config) (*runtimeConfig, error) {
 	if minTTL > 0 && maxTTL > 0 && minTTL > maxTTL {
 		return nil, errors.New("server.min_ttl 不应大于 server.max_ttl")
 	}
+
+	allowCIDRs, err := parseAllowedCIDRs(newCfg.Server.AllowCIDRs)
+	if err != nil {
+		return nil, err
+	}
+	maxConcurrentQueries := newCfg.Server.MaxConcurrentQueries
+	if maxConcurrentQueries == 0 {
+		maxConcurrentQueries = 256
+	}
+
 	rewriteTTL := uint32(600)
 	if strings.TrimSpace(newCfg.Rewrite.DefaultTTL) != "" {
 		rewriteDuration, err := time.ParseDuration(newCfg.Rewrite.DefaultTTL)
@@ -182,6 +197,8 @@ func buildRuntimeFromConfig(newCfg Config) (*runtimeConfig, error) {
 		maxCacheTTL:       maxTTL,
 		rewriteTTL:        rewriteTTL,
 		matcher:           matcher,
+		allowCIDRs:        allowCIDRs,
+		querySlots:        make(chan struct{}, maxConcurrentQueries),
 	}
 	return rt, nil
 }
