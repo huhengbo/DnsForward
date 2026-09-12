@@ -67,7 +67,7 @@ func forwardToUpstreamParallel(rt *runtimeConfig, r *dns.Msg) *dns.Msg {
 	case resp := <-respChan:
 		return resp
 	case <-time.After(rt.upstreamTimeout):
-		serviceLogger(fmt.Sprintf("获取上游DNS响应超时"), 31, false)
+		serviceLogger("获取上游DNS响应超时", 31, false)
 		return nil
 	}
 }
