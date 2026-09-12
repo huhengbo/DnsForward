@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -58,8 +59,17 @@ func validateConfig(cfg *Config) error {
 		return errors.New("fetch.retry 不能为负数")
 	}
 	for idx, rule := range cfg.Rewrite.Rules {
-		if strings.TrimSpace(rule.Target) == "" {
-			return fmt.Errorf("rewrite.rules[%d] target 不能为空", idx)
+		typ := strings.TrimSpace(rule.Type)
+		switch typ {
+		case "DOMAIN", "DOMAIN-SUFFIX", "DOMAIN-KEYWORD", "RULE-SET":
+		default:
+			return fmt.Errorf("rewrite.rules[%d] type 不支持: %s", idx, rule.Type)
+		}
+		if strings.TrimSpace(rule.Value) == "" {
+			return fmt.Errorf("rewrite.rules[%d] value 不能为空", idx)
+		}
+		if net.ParseIP(strings.TrimSpace(rule.Target)) == nil {
+			return fmt.Errorf("rewrite.rules[%d] target 必须是有效 IP", idx)
 		}
 	}
 	return nil
@@ -71,7 +81,7 @@ func loadConfigFromFile(path string) (Config, error) {
 		return Config{}, err
 	}
 	var newCfg Config
-	if err := yaml.Unmarshal(data, &newCfg); err != nil {
+	if err := yaml.UnmarshalStrict(data, &newCfg); err != nil {
 		return Config{}, err
 	}
 	if err := validateConfig(&newCfg); err != nil {
