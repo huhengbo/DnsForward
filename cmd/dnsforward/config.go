@@ -22,6 +22,7 @@ type Config struct {
 		MaxTTL               string   `yaml:"max_ttl"`
 		MetricsAddress       string   `yaml:"metrics_address"`
 		WebAddress           string   `yaml:"web_address"`
+		WebPasswordHash      string   `yaml:"web_password_hash"`
 		AllowCIDRs           []string `yaml:"allow_cidrs"`
 		MaxConcurrentQueries int      `yaml:"max_concurrent_queries"`
 	} `yaml:"server"`
@@ -55,6 +56,11 @@ func validateConfig(cfg *Config) error {
 	}
 	if err := validateWebAddress(cfg.Server.WebAddress); err != nil {
 		return err
+	}
+	if hash := strings.TrimSpace(cfg.Server.WebPasswordHash); hash != "" {
+		if _, _, _, err := parsePasswordHash(hash); err != nil {
+			return err
+		}
 	}
 	if len(cfg.Upstream.DNSServers) == 0 {
 		return errors.New("upstream.dns_servers 不能为空")
@@ -244,11 +250,15 @@ func applyRuntimeConfig(newCfg Config) error {
 	if err != nil {
 		return err
 	}
+	oldWebPasswordHash := strings.TrimSpace(cfg.Server.WebPasswordHash)
 	if current := currentRuntime(); current != nil && current.dnsCache != nil {
 		current.dnsCache.Flush()
 	}
 	runtimeCfg.Store(rt)
 	cfg = newCfg
+	if oldWebPasswordHash != strings.TrimSpace(newCfg.Server.WebPasswordHash) {
+		resetWebSessions()
+	}
 	totalRules := len(rt.matcher.domain) + len(rt.matcher.keyword)
 	for _, rs := range rt.matcher.suffix {
 		totalRules += len(rs)
