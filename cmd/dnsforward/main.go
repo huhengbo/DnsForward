@@ -69,10 +69,10 @@ func main() {
 		startMetricsServer(metricsAddr)
 	}
 
-	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, syscall.SIGHUP)
+	reloadChan := make(chan os.Signal, 1)
+	signal.Notify(reloadChan, syscall.SIGHUP)
 	go func() {
-		for range signalChan {
+		for range reloadChan {
 			serviceLogger("收到 SIGHUP，开始重新加载配置", 0, false)
 			newCfg, err := loadConfigFromFile(ConfigFilePath)
 			if err != nil {
@@ -101,14 +101,29 @@ func main() {
 	serviceLogger(fmt.Sprintf("开始监听: %v", dnsAddr), 0, false)
 
 	udpServer := &dns.Server{Addr: dnsAddr, Net: "udp"}
+	tcpServer := &dns.Server{Addr: dnsAddr, Net: "tcp"}
+	serverErr := make(chan error, 2)
+
 	go func() {
 		if err := udpServer.ListenAndServe(); err != nil {
-			serviceLogger(fmt.Sprintf("启动UDP服务失败: %v", err), 31, false)
+			serverErr <- fmt.Errorf("UDP 服务失败: %w", err)
+		}
+	}()
+	go func() {
+		if err := tcpServer.ListenAndServe(); err != nil {
+			serverErr <- fmt.Errorf("TCP 服务失败: %w", err)
 		}
 	}()
 
-	tcpServer := &dns.Server{Addr: dnsAddr, Net: "tcp"}
-	if err := tcpServer.ListenAndServe(); err != nil {
-		serviceLogger(fmt.Sprintf("启动TCP服务失败: %v", err), 31, false)
+	stopChan := make(chan os.Signal, 1)
+	signal.Notify(stopChan, os.Interrupt, syscall.SIGTERM)
+
+	select {
+	case sig := <-stopChan:
+		serviceLogger(fmt.Sprintf("收到 %s，停止 DNS 服务", sig), 0, false)
+		_ = udpServer.Shutdown()
+		_ = tcpServer.Shutdown()
+	case err := <-serverErr:
+		fatalf("DNS 服务异常退出: %v", err)
 	}
 }
