@@ -28,20 +28,10 @@ func forwardToUpstreamParallel(rt *runtimeConfig, r *dns.Msg) *dns.Msg {
 			defer wg.Done()
 			client := &dns.Client{Timeout: rt.upstreamTimeout, Net: ep.Network}
 			if ep.Network == "tcp-tls" {
-				tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
-				serverName := ep.ServerName
-				if serverName == "" {
-					host := hostFromAddress(ep.Address)
-					if net.ParseIP(host) == nil {
-						serverName = host
-					}
+				client.TLSConfig = &tls.Config{
+					MinVersion: tls.VersionTLS12,
+					ServerName: ep.ServerName,
 				}
-				if serverName != "" {
-					tlsConfig.ServerName = serverName
-				} else {
-					tlsConfig.InsecureSkipVerify = true
-				}
-				client.TLSConfig = tlsConfig
 			}
 			query := r.Copy()
 			resp, _, err := client.Exchange(query, ep.Address)
@@ -114,8 +104,11 @@ func parseUpstreamEndpoints(servers []string, defaultProto string) ([]upstreamEn
 		serverName := ""
 		if strings.Contains(target, "@") {
 			parts := strings.SplitN(target, "@", 2)
-			target = parts[0]
-			serverName = parts[1]
+			target = strings.TrimSpace(parts[0])
+			serverName = strings.TrimSpace(parts[1])
+			if serverName == "" {
+				return nil, fmt.Errorf("DoT 上游 %q 的 TLS 校验名称不能为空", entry)
+			}
 		}
 		hostPort := target
 		if _, _, err := net.SplitHostPort(hostPort); err != nil {
@@ -125,24 +118,22 @@ func parseUpstreamEndpoints(servers []string, defaultProto string) ([]upstreamEn
 		if err != nil {
 			return nil, fmt.Errorf("上游地址解析失败 %s: %w", target, err)
 		}
-		ep := upstreamEndpoint{Address: hostPort, Network: protoNetwork}
-		if serverName != "" {
-			ep.ServerName = serverName
-		} else if protoNetwork == "tcp-tls" && net.ParseIP(host) == nil {
-			ep.ServerName = host
+
+		if protoNetwork == "tcp-tls" && serverName == "" {
+			if net.ParseIP(host) != nil {
+				return nil, fmt.Errorf("DoT 上游 %q 使用 IP 地址时必须通过 tls://IP@hostname 显式指定 TLS 校验名称", entry)
+			}
+			serverName = host
 		}
-		endpoints = append(endpoints, ep)
+
+		endpoints = append(endpoints, upstreamEndpoint{
+			Address:    hostPort,
+			Network:    protoNetwork,
+			ServerName: serverName,
+		})
 	}
 	if len(endpoints) == 0 {
 		return nil, errors.New("未解析到有效上游 DNS")
 	}
 	return endpoints, nil
-}
-
-func hostFromAddress(addr string) string {
-	host, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		return addr
-	}
-	return host
 }
