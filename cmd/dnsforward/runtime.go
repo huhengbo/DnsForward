@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/patrickmn/go-cache"
+	"golang.org/x/sync/singleflight"
 )
 
 type runtimeConfig struct {
@@ -23,6 +24,7 @@ type runtimeConfig struct {
 	matcher           ruleMatcher
 	allowCIDRs        []netip.Prefix
 	querySlots        chan struct{}
+	missGroup         singleflight.Group
 }
 
 var runtimeCfg atomic.Value
