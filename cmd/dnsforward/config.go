@@ -21,6 +21,7 @@ type Config struct {
 		MinTTL               string   `yaml:"min_ttl"`
 		MaxTTL               string   `yaml:"max_ttl"`
 		MetricsAddress       string   `yaml:"metrics_address"`
+		WebAddress           string   `yaml:"web_address"`
 		AllowCIDRs           []string `yaml:"allow_cidrs"`
 		MaxConcurrentQueries int      `yaml:"max_concurrent_queries"`
 	} `yaml:"server"`
