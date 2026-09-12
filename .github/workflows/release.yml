@@ -1,0 +1,70 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: 1.26.8
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Build release archives
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="${GITHUB_REF_NAME}"
+          mkdir -p dist
+
+          while read -r goos goarch; do
+            package="dnsforward_${version}_${goos}_${goarch}"
+            workdir="$(mktemp -d)"
+            binary="dnsforward"
+            if [[ "${goos}" == "windows" ]]; then
+              binary="dnsforward.exe"
+            fi
+
+            GOOS="${goos}" GOARCH="${goarch}" CGO_ENABLED=0 \
+              go build -trimpath -ldflags "-s -w -X main.version=${version}" \
+              -o "${workdir}/${binary}" ./cmd/dnsforward
+
+            cp configs/config.example.yaml "${workdir}/config.example.yaml"
+
+            if [[ "${goos}" == "windows" ]]; then
+              (cd "${workdir}" && zip -q -r "${GITHUB_WORKSPACE}/dist/${package}.zip" .)
+            else
+              tar -C "${workdir}" -czf "dist/${package}.tar.gz" .
+            fi
+
+            rm -rf "${workdir}"
+          done <<'EOF'
+          linux amd64
+          linux arm64
+          darwin amd64
+          darwin arm64
+          windows amd64
+          windows arm64
+          EOF
+
+          (cd dist && sha256sum dnsforward_* > checksums.txt)
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" dist/* --title "${GITHUB_REF_NAME}" --generate-notes
