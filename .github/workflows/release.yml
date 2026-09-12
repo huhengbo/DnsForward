@@ -2,12 +2,14 @@ name: Release
 
 on:
   push:
+    branches:
+      - master
     tags:
       - "v*"
   workflow_dispatch:
     inputs:
-      version:
-        description: "Release version, for example v1.1.0"
+      tag:
+        description: "Existing or new v-prefixed tag to release"
         required: true
         type: string
 
@@ -16,12 +18,18 @@ permissions:
 
 jobs:
   release:
+    if: >-
+      github.event_name != 'push' ||
+      startsWith(github.ref, 'refs/tags/') ||
+      startsWith(github.event.head_commit.message, 'release:')
     runs-on: ubuntu-latest
     env:
       GOTOOLCHAIN: local
     steps:
-      - name: Checkout
+      - name: Checkout release source
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v7
@@ -30,26 +38,45 @@ jobs:
           cache: true
           cache-dependency-path: go.sum
 
-      - name: Resolve release version
+      - name: Resolve release tag
         id: release
         shell: bash
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           set -euo pipefail
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            version="${{ inputs.version }}"
+            tag='${{ inputs.tag }}'
+          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            tag="${GITHUB_REF_NAME}"
           else
-            version="${GITHUB_REF_NAME}"
+            tag="${COMMIT_MESSAGE#release:}"
+            tag="${tag# }"
           fi
-          if [[ ! "${version}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
-            echo "Invalid release version: ${version}" >&2
+          if [[ ! "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid release tag: ${tag}" >&2
             exit 1
           fi
-          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+
+      - name: Check existing release
+        id: existing_release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        shell: bash
+        run: |
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            echo "exists=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "exists=false" >> "${GITHUB_OUTPUT}"
+          fi
 
       - name: Build release archives
+        if: steps.existing_release.outputs.exists != 'true' || github.event_name == 'workflow_dispatch'
         shell: bash
         env:
-          VERSION: ${{ steps.release.outputs.version }}
+          VERSION: ${{ steps.release.outputs.tag }}
         run: |
           set -euo pipefail
           mkdir -p dist
@@ -87,24 +114,38 @@ jobs:
           (cd dist && sha256sum dnsforward_* > checksums.txt)
 
       - name: Upload release artifacts
+        if: steps.existing_release.outputs.exists != 'true' || github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
-          name: dnsforward-${{ steps.release.outputs.version }}
+          name: dnsforward-${{ steps.release.outputs.tag }}
           path: dist/*
           if-no-files-found: error
 
-      - name: Create GitHub Release
+      - name: Publish GitHub Release
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
-          VERSION: ${{ steps.release.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
         shell: bash
         run: |
           set -euo pipefail
-          notes="docs/releases/${VERSION}.md"
-          args=("${VERSION}" dist/* --title "${VERSION}" --target "${GITHUB_SHA}")
-          if [[ -f "${notes}" ]]; then
-            args+=(--notes-file "${notes}")
+          notes="docs/releases/${RELEASE_TAG}.md"
+
+          if [[ '${{ steps.existing_release.outputs.exists }}' == 'true' ]]; then
+            if [[ -f "${notes}" ]]; then
+              gh release edit "${RELEASE_TAG}" \
+                --title "DnsForward ${RELEASE_TAG}" \
+                --notes-file "${notes}"
+            fi
+
+            if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+              gh release upload "${RELEASE_TAG}" dist/* --clobber
+            fi
           else
-            args+=(--generate-notes)
+            args=("${RELEASE_TAG}" dist/* --target "${GITHUB_SHA}" --title "DnsForward ${RELEASE_TAG}")
+            if [[ -f "${notes}" ]]; then
+              args+=(--notes-file "${notes}")
+            else
+              args+=(--generate-notes)
+            fi
+            gh release create "${args[@]}"
           fi
-          gh release create "${args[@]}"
