@@ -45,6 +45,16 @@ func TestWebConfigValidateRejectsUnknownField(t *testing.T) {
 	}
 }
 
+func TestWebConfigValidateRejectsNonLoopback(t *testing.T) {
+	body := strings.Replace(webTestConfig, "127.0.0.1:8080", "0.0.0.0:8080", 1)
+	req := httptest.NewRequest(http.MethodPost, "/api/config/validate", strings.NewReader(body))
+	rr := httptest.NewRecorder()
+	webConfigValidateHandler(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rr.Code)
+	}
+}
+
 func TestWebConfigGetAndPut(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
