@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"gopkg.in/yaml.v2"
 )
@@ -25,12 +24,12 @@ const webPage = `<!doctype html>
 <body>
 <header><div><h1>DnsForward</h1><small id="version"></small></div><div class="status" id="status">加载中…</div></header>
 <div class="card"><strong>服务状态</strong><p id="summary"></p><div class="row"><a class="button" href="/healthz" target="_blank">Health</a><a class="button" href="/metrics" target="_blank">Metrics</a></div></div>
-<div class="card"><strong>配置</strong><p><small>直接编辑 YAML，可管理 upstream、Rewrite 和 RULE-SET。保存前会完整校验，成功后立即 reload。</small></p><textarea id="config"></textarea><p><button onclick="validateConfig()">校验</button><button class="primary" onclick="saveConfig()">保存并重载</button> <span id="configResult"></span></p></div>
+<div class="card"><strong>配置</strong><p><small>直接编辑 YAML，可管理 upstream、Rewrite 和 RULE-SET。保存前会完整校验，成功后立即 reload。修改 web_address 后需重启进程才能切换监听地址。</small></p><textarea id="config"></textarea><p><button onclick="validateConfig()">校验</button><button class="primary" onclick="saveConfig()">保存并重载</button> <span id="configResult"></span></p></div>
 <div class="card"><strong>最近日志</strong><p><button onclick="loadLogs()">刷新</button></p><pre id="logs"></pre></div>
 <script>
 const $=id=>document.getElementById(id);
 async function request(url,options){const r=await fetch(url,options);const text=await r.text();if(!r.ok)throw new Error(text||r.statusText);return text}
-async function loadStatus(){try{const s=JSON.parse(await request('/api/status'));$('version').textContent=s.version||'dev';$('status').textContent='运行中';$('status').className='status ok';$('summary').textContent=`DNS: ${s.dns_address} · 配置: ${s.config_file}`}catch(e){$('status').textContent='状态获取失败';$('status').className='status error'}}
+async function loadStatus(){try{const s=JSON.parse(await request('/api/status'));$('version').textContent=s.version||'dev';$('status').textContent='运行中';$('status').className='status ok';$('summary').textContent=`DNS: ${s.dns_address} · Web: ${s.web_address||'关闭'} · 配置: ${s.config_file}`}catch(e){$('status').textContent='状态获取失败';$('status').className='status error'}}
 async function loadConfig(){try{$('config').value=await request('/api/config')}catch(e){$('configResult').textContent=e.message;$('configResult').className='error'}}
 async function validateConfig(){try{await request('/api/config/validate',{method:'POST',headers:{'Content-Type':'text/yaml'},body:$('config').value});$('configResult').textContent='配置有效';$('configResult').className='ok'}catch(e){$('configResult').textContent=e.message;$('configResult').className='error'}}
 async function saveConfig(){try{await request('/api/config',{method:'PUT',headers:{'Content-Type':'text/yaml'},body:$('config').value});$('configResult').textContent='已保存并重载';$('configResult').className='ok';loadStatus()}catch(e){$('configResult').textContent=e.message;$('configResult').className='error'}}
@@ -78,6 +77,7 @@ func webStatusHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]interface{}{
 		"version":     version,
 		"dns_address": cfg.Server.Address,
+		"web_address": cfg.Server.WebAddress,
 		"config_file": ConfigFilePath,
 		"started":     currentRuntime() != nil,
 	})
@@ -203,5 +203,3 @@ func writeJSON(w http.ResponseWriter, value interface{}) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(value)
 }
-
-var webStartedAt = time.Now()
