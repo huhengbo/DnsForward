@@ -57,6 +57,33 @@ func TestDetermineTTLDoesNotCacheZeroSOANegativeResponse(t *testing.T) {
 	}
 }
 
+func TestCacheDurationDoesNotCacheExplicitZeroTTLAnswer(t *testing.T) {
+	msg := &dns.Msg{}
+	msg.Answer = []dns.RR{
+		&dns.A{Hdr: dns.RR_Header{Name: "example.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 0}, A: net.ParseIP("192.0.2.10")},
+	}
+	rt := &runtimeConfig{defaultCacheTTL: 5 * time.Minute, minCacheTTL: 10 * time.Second}
+
+	if got := cacheDuration(msg, rt); got != 0 {
+		t.Fatalf("expected explicit zero-TTL answer not to be cached, got %v", got)
+	}
+}
+
+func TestCacheDurationMinTTLIsLocalRetentionPolicy(t *testing.T) {
+	msg := &dns.Msg{}
+	msg.Answer = []dns.RR{
+		&dns.A{Hdr: dns.RR_Header{Name: "example.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 5}, A: net.ParseIP("192.0.2.10")},
+	}
+	rt := &runtimeConfig{minCacheTTL: 10 * time.Second}
+
+	if got := cacheDuration(msg, rt); got != 10*time.Second {
+		t.Fatalf("expected local retention to be clamped to 10s, got %v", got)
+	}
+	if got := msg.Answer[0].Header().Ttl; got != 5 {
+		t.Fatalf("local cache policy must not rewrite downstream RR TTL, got %d", got)
+	}
+}
+
 func TestAgeDNSMessageTTL(t *testing.T) {
 	msg := &dns.Msg{}
 	msg.Answer = []dns.RR{
