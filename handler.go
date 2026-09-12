@@ -35,32 +35,19 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 		}
 		metricCacheMiss.Inc()
 
-		handled := false
 		if ip := matchRule(domain, rt.matcher); ip != "" {
 			targetIP := net.ParseIP(ip)
 			if targetIP == nil {
 				serviceLogger(fmt.Sprintf("规则目标无效，无法解析为 IP: %s", ip), 31, false)
-			} else if ipv4 := targetIP.To4(); ipv4 != nil {
-				rr := new(dns.A)
-				rr.Hdr = dns.RR_Header{Name: domain, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: rt.rewriteTTL}
-				rr.A = ipv4
+			} else if rr, ok := buildRewriteRecord(question, targetIP, rt.rewriteTTL); ok {
 				msg.Answer = append(msg.Answer, rr)
-				handled = true
-			} else if ipv6 := targetIP.To16(); ipv6 != nil {
-				rr := new(dns.AAAA)
-				rr.Hdr = dns.RR_Header{Name: domain, Rrtype: dns.TypeAAAA, Class: dns.ClassINET, Ttl: rt.rewriteTTL}
-				rr.AAAA = ipv6
-				msg.Answer = append(msg.Answer, rr)
-				handled = true
-			} else {
-				serviceLogger(fmt.Sprintf("规则目标不是有效的 IPv4/IPv6: %s", ip), 31, false)
-			}
-			if handled {
 				storeInCache(cacheKey, &msg)
 				metricRewriteHit.Inc()
 				serviceLogger(fmt.Sprintf("DNS重写：%s%s", strings.TrimSuffix(domain, "."), extractRecords(msg.Answer)), 1, true)
 				w.WriteMsg(&msg)
 				return
+			} else {
+				serviceLogger(fmt.Sprintf("规则命中但 QTYPE/目标地址不匹配，转发上游: %s qtype=%d target=%s", domain, question.Qtype, ip), 0, true)
 			}
 		}
 
@@ -81,6 +68,34 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 	}
 
 	w.WriteMsg(&msg)
+}
+
+func buildRewriteRecord(question dns.Question, targetIP net.IP, ttl uint32) (dns.RR, bool) {
+	switch question.Qtype {
+	case dns.TypeA:
+		ipv4 := targetIP.To4()
+		if ipv4 == nil {
+			return nil, false
+		}
+		return &dns.A{
+			Hdr: dns.RR_Header{Name: question.Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: ttl},
+			A:   ipv4,
+		}, true
+	case dns.TypeAAAA:
+		if targetIP.To4() != nil {
+			return nil, false
+		}
+		ipv6 := targetIP.To16()
+		if ipv6 == nil {
+			return nil, false
+		}
+		return &dns.AAAA{
+			Hdr:  dns.RR_Header{Name: question.Name, Rrtype: dns.TypeAAAA, Class: dns.ClassINET, Ttl: ttl},
+			AAAA: ipv6,
+		}, true
+	default:
+		return nil, false
+	}
 }
 
 func extractRecords(answers []dns.RR) []string {
