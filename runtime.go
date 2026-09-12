@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"net/netip"
 	"sync/atomic"
 	"time"
 
@@ -20,6 +21,8 @@ type runtimeConfig struct {
 	maxCacheTTL       time.Duration
 	rewriteTTL        uint32
 	matcher           ruleMatcher
+	allowCIDRs        []netip.Prefix
+	querySlots        chan struct{}
 }
 
 var runtimeCfg atomic.Value
