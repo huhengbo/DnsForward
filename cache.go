@@ -25,14 +25,7 @@ func storeInCacheAt(cacheKey string, msg *dns.Msg, now time.Time) {
 
 	msgCopy := msg.Copy()
 	msgCopy.Id = 0
-	ttl := determineTTL(msgCopy, rt.negativeCacheTTL)
-	if ttl <= 0 {
-		if isNegativeResponse(msgCopy) {
-			return
-		}
-		ttl = rt.defaultCacheTTL
-	}
-	ttl = clampTTL(ttl, rt.minCacheTTL, rt.maxCacheTTL)
+	ttl := cacheDuration(msgCopy, rt)
 	if ttl <= 0 {
 		return
 	}
@@ -41,6 +34,21 @@ func storeInCacheAt(cacheKey string, msg *dns.Msg, now time.Time) {
 	if len(msgCopy.Question) > 0 {
 		serviceLogger(fmt.Sprintf("缓存写入：%s (TTL=%v)", strings.TrimSuffix(msgCopy.Question[0].Name, "."), ttl), 1, true)
 	}
+}
+
+func cacheDuration(msg *dns.Msg, rt *runtimeConfig) time.Duration {
+	if msg == nil || rt == nil {
+		return 0
+	}
+
+	ttl := determineTTL(msg, rt.negativeCacheTTL)
+	if ttl <= 0 {
+		if isNegativeResponse(msg) || len(msg.Answer) > 0 {
+			return 0
+		}
+		ttl = rt.defaultCacheTTL
+	}
+	return clampTTL(ttl, rt.minCacheTTL, rt.maxCacheTTL)
 }
 
 func getCachedResponse(rt *runtimeConfig, cacheKey string, now time.Time) (*dns.Msg, bool) {
