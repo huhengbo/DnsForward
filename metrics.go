@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -27,8 +28,8 @@ var (
 
 func ensureMetricsRegistered() {
 	metricsOnce.Do(func() {
-		metricsRegistry.MustRegister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
-		metricsRegistry.MustRegister(prometheus.NewGoCollector())
+		metricsRegistry.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
+		metricsRegistry.MustRegister(collectors.NewGoCollector())
 		metricsRegistry.MustRegister(
 			metricCacheHit,
 			metricCacheMiss,
