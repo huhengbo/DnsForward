@@ -8,60 +8,151 @@ import (
 	"github.com/miekg/dns"
 )
 
+type dnsCacheEntry struct {
+	msg      *dns.Msg
+	storedAt time.Time
+}
+
 func storeInCache(cacheKey string, msg *dns.Msg) {
+	storeInCacheAt(cacheKey, msg, time.Now())
+}
+
+func storeInCacheAt(cacheKey string, msg *dns.Msg, now time.Time) {
 	rt := currentRuntime()
-	if rt == nil || rt.dnsCache == nil {
+	if rt == nil || rt.dnsCache == nil || msg == nil {
 		return
 	}
+
 	msgCopy := msg.Copy()
 	msgCopy.Id = 0
 	ttl := determineTTL(msgCopy, rt.negativeCacheTTL)
 	if ttl <= 0 {
+		if isNegativeResponse(msgCopy) {
+			return
+		}
 		ttl = rt.defaultCacheTTL
 	}
 	ttl = clampTTL(ttl, rt.minCacheTTL, rt.maxCacheTTL)
-	rt.dnsCache.Set(cacheKey, msgCopy, ttl)
+	if ttl <= 0 {
+		return
+	}
+
+	rt.dnsCache.Set(cacheKey, dnsCacheEntry{msg: msgCopy, storedAt: now}, ttl)
 	if len(msgCopy.Question) > 0 {
 		serviceLogger(fmt.Sprintf("缓存写入：%s (TTL=%v)", strings.TrimSuffix(msgCopy.Question[0].Name, "."), ttl), 1, true)
 	}
 }
 
+func getCachedResponse(rt *runtimeConfig, cacheKey string, now time.Time) (*dns.Msg, bool) {
+	if rt == nil || rt.dnsCache == nil {
+		return nil, false
+	}
+
+	cached, found := rt.dnsCache.Get(cacheKey)
+	if !found {
+		return nil, false
+	}
+	entry, ok := cached.(dnsCacheEntry)
+	if !ok || entry.msg == nil {
+		rt.dnsCache.Delete(cacheKey)
+		return nil, false
+	}
+
+	resp := entry.msg.Copy()
+	ageDNSMessageTTL(resp, now.Sub(entry.storedAt))
+	return resp, true
+}
+
 func determineTTL(msg *dns.Msg, negativeTTL time.Duration) time.Duration {
+	if msg == nil {
+		return 0
+	}
+
+	if isNegativeResponse(msg) {
+		if soaTTL, found := negativeSOATTL(msg); found {
+			if soaTTL == 0 {
+				return 0
+			}
+			ttl := time.Duration(soaTTL) * time.Second
+			if negativeTTL > 0 && ttl > negativeTTL {
+				ttl = negativeTTL
+			}
+			return ttl
+		}
+		if negativeTTL > 0 {
+			return negativeTTL
+		}
+		return 0
+	}
+
 	var (
 		found  bool
 		minTTL uint32 = ^uint32(0)
 	)
-	update := func(ttl uint32) {
-		if ttl == 0 {
-			return
-		}
+	for _, rr := range msg.Answer {
+		ttl := rr.Header().Ttl
 		if ttl < minTTL {
 			minTTL = ttl
 			found = true
 		}
 	}
-	for _, rr := range msg.Answer {
-		update(rr.Header().Ttl)
+	if !found {
+		return 0
 	}
+	return time.Duration(minTTL) * time.Second
+}
+
+func isNegativeResponse(msg *dns.Msg) bool {
+	if msg == nil {
+		return false
+	}
+	if msg.Rcode == dns.RcodeNameError {
+		return true
+	}
+	if msg.Rcode != dns.RcodeSuccess || len(msg.Answer) > 0 {
+		return false
+	}
+	_, found := negativeSOATTL(msg)
+	return found
+}
+
+func negativeSOATTL(msg *dns.Msg) (uint32, bool) {
 	for _, rr := range msg.Ns {
-		switch v := rr.(type) {
-		case *dns.SOA:
-			candidate := v.Hdr.Ttl
-			if v.Minttl < candidate {
-				candidate = v.Minttl
+		soa, ok := rr.(*dns.SOA)
+		if !ok {
+			continue
+		}
+		ttl := soa.Hdr.Ttl
+		if soa.Minttl < ttl {
+			ttl = soa.Minttl
+		}
+		return ttl, true
+	}
+	return 0, false
+}
+
+func ageDNSMessageTTL(msg *dns.Msg, elapsed time.Duration) {
+	if msg == nil || elapsed <= 0 {
+		return
+	}
+
+	seconds := uint64(elapsed / time.Second)
+	if seconds == 0 {
+		return
+	}
+	age := func(records []dns.RR) {
+		for _, rr := range records {
+			header := rr.Header()
+			if uint64(header.Ttl) <= seconds {
+				header.Ttl = 0
+				continue
 			}
-			update(candidate)
-		default:
-			update(rr.Header().Ttl)
+			header.Ttl -= uint32(seconds)
 		}
 	}
-	if found {
-		return time.Duration(minTTL) * time.Second
-	}
-	if msg.MsgHdr.Rcode == dns.RcodeNameError && negativeTTL > 0 {
-		return negativeTTL
-	}
-	return 0
+	age(msg.Answer)
+	age(msg.Ns)
+	age(msg.Extra)
 }
 
 func clampTTL(ttl time.Duration, minTTL, maxTTL time.Duration) time.Duration {
