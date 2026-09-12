@@ -18,6 +18,13 @@ type upstreamEndpoint struct {
 	ServerName string
 }
 
+func isAcceptableUpstreamResponse(resp *dns.Msg) bool {
+	if resp == nil {
+		return false
+	}
+	return resp.Rcode == dns.RcodeSuccess || resp.Rcode == dns.RcodeNameError
+}
+
 func forwardToUpstreamParallel(rt *runtimeConfig, r *dns.Msg) *dns.Msg {
 	var wg sync.WaitGroup
 	respChan := make(chan *dns.Msg, 1)
@@ -35,15 +42,13 @@ func forwardToUpstreamParallel(rt *runtimeConfig, r *dns.Msg) *dns.Msg {
 			}
 			query := r.Copy()
 			resp, _, err := client.Exchange(query, ep.Address)
-			if err == nil && resp != nil {
-				if resp.Rcode == dns.RcodeServerFailure {
-					return
-				}
-				select {
-				case respChan <- resp:
-					serviceLogger(fmt.Sprintf("上游响应成功: %s", ep.Address), 32, true)
-				default:
-				}
+			if err != nil || !isAcceptableUpstreamResponse(resp) {
+				return
+			}
+			select {
+			case respChan <- resp:
+				serviceLogger(fmt.Sprintf("上游响应成功: %s", ep.Address), 32, true)
+			default:
 			}
 		}(endpoint)
 	}
