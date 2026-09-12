@@ -70,23 +70,42 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 			}
 		}
 
-		metricUpstreamRequests.Inc()
-		start := time.Now()
-		resp := forwardToUpstreamParallel(rt, r)
-		if resp != nil {
-			serviceLogger(fmt.Sprintf("上游DNS解析！: %s -> %v", domain, extractRecords(resp.Answer)), 32, true)
-			storeInCache(cacheKey, resp)
+		resp := coalesceUpstreamLookup(rt, cacheKey, func() *dns.Msg {
+			metricUpstreamRequests.Inc()
+			start := time.Now()
+			upstreamResp := forwardToUpstreamParallel(rt, r)
+			if upstreamResp == nil {
+				metricUpstreamFailure.Inc()
+				return nil
+			}
+
+			serviceLogger(fmt.Sprintf("上游DNS解析！: %s -> %v", domain, extractRecords(upstreamResp.Answer)), 32, true)
+			storeInCache(cacheKey, upstreamResp)
 			metricUpstreamSuccess.Inc()
 			metricUpstreamLatency.Observe(time.Since(start).Seconds())
+			return upstreamResp
+		})
+		if resp != nil {
+			resp.Id = r.Id
 			w.WriteMsg(resp)
 		} else {
 			dns.HandleFailed(w, r)
-			metricUpstreamFailure.Inc()
 		}
 		return
 	}
 
 	w.WriteMsg(&msg)
+}
+
+func coalesceUpstreamLookup(rt *runtimeConfig, cacheKey string, lookup func() *dns.Msg) *dns.Msg {
+	value, _, _ := rt.missGroup.Do(cacheKey, func() (any, error) {
+		return lookup(), nil
+	})
+	resp, _ := value.(*dns.Msg)
+	if resp == nil {
+		return nil
+	}
+	return resp.Copy()
 }
 
 func buildRewriteRecord(question dns.Question, targetIP net.IP, ttl uint32) (dns.RR, bool) {
