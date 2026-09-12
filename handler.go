@@ -24,9 +24,8 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 		domain := question.Name
 		cacheKey := buildCacheKey(question)
 
-		if cachedMsg, found := rt.dnsCache.Get(cacheKey); found {
+		if resp, found := getCachedResponse(rt, cacheKey, time.Now()); found {
 			metricCacheHit.Inc()
-			resp := cachedMsg.(*dns.Msg).Copy()
 			resp.Id = r.Id
 			serviceLogger(fmt.Sprintf("缓存命中！: %s -> %v", domain, extractRecords(resp.Answer)), 32, true)
 			w.WriteMsg(resp)
