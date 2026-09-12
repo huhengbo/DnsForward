@@ -18,6 +18,7 @@ var (
 	LogFilePath    string // 日志文件路径
 	EnableDebug    bool   // 调试模式开关
 	printVersion   bool
+	hashPassword   bool
 
 	cfg Config // 当前生效的配置
 )
@@ -36,6 +37,8 @@ https://github.com/huhengbo/DnsForward
         调试模式 (默认 关)
     -v
         程序版本
+    -hash-password
+        从 stdin 读取密码并输出 web_password_hash
     -h
         帮助说明
 `
@@ -43,6 +46,7 @@ https://github.com/huhengbo/DnsForward
 	flag.StringVar(&LogFilePath, "l", "", "日志文件")
 	flag.BoolVar(&EnableDebug, "d", false, "调试模式")
 	flag.BoolVar(&printVersion, "v", false, "程序版本")
+	flag.BoolVar(&hashPassword, "hash-password", false, "生成 Web 管理密码哈希")
 	flag.Usage = func() { fmt.Print(help) }
 }
 
@@ -50,6 +54,13 @@ func main() {
 	flag.Parse()
 	if printVersion {
 		fmt.Printf("huhengbo/DnsForward %s\n", version)
+		return
+	}
+	if hashPassword {
+		if err := printPasswordHashFromStdin(); err != nil {
+			fmt.Fprintf(os.Stderr, "生成密码哈希失败: %v\n", err)
+			os.Exit(1)
+		}
 		return
 	}
 
