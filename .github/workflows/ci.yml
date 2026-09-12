@@ -27,6 +27,8 @@ jobs:
           cache-dependency-path: go.sum
       - name: Verify formatting
         run: test -z "$(gofmt -l .)"
+      - name: Verify installer syntax
+        run: bash -n scripts/install.sh
       - name: Verify module files
         run: |
           go mod tidy
