@@ -24,8 +24,8 @@ var (
 
 func init() {
 	help := `
-SNIProxy ` + version + `
-https://github.com/huhengbo/dnsForward
+DnsForward ` + version + `
+https://github.com/huhengbo/DnsForward
 
 参数：
     -c config.yaml
@@ -49,7 +49,7 @@ https://github.com/huhengbo/dnsForward
 func main() {
 	flag.Parse()
 	if printVersion {
-		fmt.Printf("huhengbo/dnsForward %s\n", version)
+		fmt.Printf("huhengbo/DnsForward %s\n", version)
 		return
 	}
 

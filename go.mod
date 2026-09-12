@@ -1,4 +1,4 @@
-module DnsForward
+module github.com/huhengbo/DnsForward
 
 go 1.26.0
 
