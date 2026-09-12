@@ -154,7 +154,10 @@ func buildRuleMatcher(rules []Rule) ruleMatcher {
 		suffix: make(map[string][]compiledRule),
 	}
 	for _, rule := range rules {
-		value := strings.ToLower(rule.Value)
+		value := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(rule.Value), "."))
+		if value == "" {
+			continue
+		}
 		switch rule.Type {
 		case "DOMAIN":
 			m.domain[value] = rule.Target
@@ -176,7 +179,7 @@ func lastLabel(domain string) string {
 }
 
 func matchRule(domain string, matcher ruleMatcher) string {
-	domain = strings.TrimSuffix(domain, ".")
+	domain = strings.TrimSuffix(strings.TrimSpace(domain), ".")
 	if domain == "" {
 		return ""
 	}
@@ -187,7 +190,7 @@ func matchRule(domain string, matcher ruleMatcher) string {
 	label := lastLabel(value)
 	if rules, ok := matcher.suffix[label]; ok {
 		for _, rule := range rules {
-			if strings.HasSuffix(value, rule.value) {
+			if value == rule.value || strings.HasSuffix(value, "."+rule.value) {
 				return rule.target
 			}
 		}
