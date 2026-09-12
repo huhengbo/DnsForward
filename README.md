@@ -3,7 +3,7 @@
 [![CI](https://github.com/huhengbo/DnsForward/actions/workflows/ci.yml/badge.svg)](https://github.com/huhengbo/DnsForward/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-DnsForward 是一个轻量级 DNS 转发与重写服务，面向本机或内网使用。它支持 UDP/TCP DNS、多个上游并发查询、本地缓存、域名重写、远程规则集、DoT、Prometheus 指标和配置热加载。
+DnsForward 是一个轻量级 DNS 转发与重写服务，面向本机或内网使用。它支持 UDP/TCP DNS、多个上游并发查询、本地缓存、域名重写、远程规则集、DoT、Prometheus 指标、配置热加载和内置 Web 管理。
 
 ## 特性
 
@@ -16,6 +16,7 @@ DnsForward 是一个轻量级 DNS 转发与重写服务，面向本机或内网�
 - 全局并发查询限制
 - Prometheus `/metrics` 和 `/healthz`
 - Unix `SIGHUP` 配置热加载
+- 内置 Web 管理页面
 - Linux、macOS、Windows 构建验证
 
 ## 快速开始
@@ -36,6 +37,9 @@ go run ./cmd/dnsforward -c config.yaml
 
 - DNS: `127.0.0.1:53`
 - Metrics: `127.0.0.1:9090`
+- Web: `127.0.0.1:8080`
+
+启动后可以打开 `http://127.0.0.1:8080/` 进入 Web 管理页面。
 
 验证 DNS：
 
@@ -85,11 +89,30 @@ sudo dnsforwardctl uninstall
 
 `uninstall` 会移除 systemd 服务、`dnsforward` 和 `dnsforwardctl`，但会保留 `/etc/dnsforward/config.yaml`，便于后续重新安装时继续使用原配置。
 
-修改 `/etc/dnsforward/config.yaml` 后，可直接重启服务：
+## Web 管理
 
-```bash
-sudo dnsforwardctl restart
+Web 管理直接内置在 `dnsforward` 二进制中，不需要额外部署前端或后端服务。
+
+示例配置：
+
+```yaml
+server:
+  web_address: "127.0.0.1:8080"
 ```
+
+当前一期支持：
+
+- 查看运行状态和版本
+- 查看、编辑完整 YAML 配置
+- 管理 upstream、Rewrite 和 `RULE-SET`
+- 保存前完整配置校验
+- 保存后立即热重载
+- 查看 `/healthz` 与 `/metrics`
+- 查看当前进程最近 200 条日志
+
+当前 Web 管理**没有登录认证**，因此 `web_address` 只允许 loopback 地址（`127.0.0.1`、`::1` 或 `localhost`），不能配置为 `0.0.0.0` 或局域网地址。后续增加认证后再考虑远程管理。
+
+修改 `web_address` 本身后需要重启进程才能切换监听地址；其他运行配置会在保存后立即应用。
 
 ## 配置
 
@@ -101,6 +124,7 @@ sudo dnsforwardctl restart
 server:
   address: "127.0.0.1:53"
   metrics_address: "127.0.0.1:9090"
+  web_address: "127.0.0.1:8080"
   allow_cidrs:
     - "127.0.0.0/8"
     - "::1/128"
@@ -129,6 +153,7 @@ rewrite:
 
 - `address`: DNS UDP/TCP 监听地址。
 - `metrics_address`: Prometheus 与健康检查监听地址；留空可关闭。
+- `web_address`: 内置 Web 管理监听地址；留空关闭，一期只允许 loopback。
 - `allow_cidrs`: 允许访问 DNS 服务的客户端网段。省略时默认只允许 loopback。
 - `max_concurrent_queries`: 同时处理的查询上限，默认 256。
 - `cache_expiration`: 无可用 RR TTL 时使用的默认本地缓存时间。
@@ -164,7 +189,7 @@ tls://1.1.1.1@cloudflare-dns.com
 
 DnsForward 默认按本地服务使用，不应直接暴露为公网开放递归 DNS。
 
-如果需要对局域网开放，请同时修改监听地址和 `allow_cidrs`，只允许需要的网段。例如：
+如果需要对局域网开放 DNS，请同时修改监听地址和 `allow_cidrs`，只允许需要的网段。例如：
 
 ```yaml
 server:
@@ -175,7 +200,7 @@ server:
 
 未授权客户端会收到 `REFUSED`，达到并发上限时返回 `SERVFAIL`，两者都不会继续访问上游。
 
-不要把 metrics 端口无保护地暴露到公网。
+不要把 metrics 端口无保护地暴露到公网；当前 Web 管理也不允许监听非 loopback 地址。
 
 ## 指标与健康检查
 
@@ -186,7 +211,7 @@ GET /metrics
 GET /healthz
 ```
 
-指标包含缓存命中、规则重写、上游请求与延迟、配置重载、ACL 拒绝和并发限制拒绝等数据。
+Web 管理端口也提供相同的 `/metrics` 和 `/healthz` 路径。
 
 ## 热加载
 
@@ -195,6 +220,8 @@ Unix 系统可以向进程发送 `SIGHUP` 重新读取配置：
 ```bash
 kill -HUP <pid>
 ```
+
+Web 保存配置也会触发同样的运行时重载。
 
 ## 开发
 
@@ -213,7 +240,7 @@ GitHub Actions 还会执行格式检查、安装脚本语法检查、`staticchec
 ```text
 .
 ├── cmd/
-│   └── dnsforward/       # DNS 服务实现、入口与测试
+│   └── dnsforward/       # DNS 服务、Web 管理、入口与测试
 ├── configs/
 │   └── config.example.yaml
 ├── scripts/

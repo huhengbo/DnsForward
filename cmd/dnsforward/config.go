@@ -21,6 +21,7 @@ type Config struct {
 		MinTTL               string   `yaml:"min_ttl"`
 		MaxTTL               string   `yaml:"max_ttl"`
 		MetricsAddress       string   `yaml:"metrics_address"`
+		WebAddress           string   `yaml:"web_address"`
 		AllowCIDRs           []string `yaml:"allow_cidrs"`
 		MaxConcurrentQueries int      `yaml:"max_concurrent_queries"`
 	} `yaml:"server"`
@@ -52,6 +53,9 @@ func validateConfig(cfg *Config) error {
 	if cfg.Server.MaxConcurrentQueries < 0 {
 		return errors.New("server.max_concurrent_queries 不能为负数")
 	}
+	if err := validateWebAddress(cfg.Server.WebAddress); err != nil {
+		return err
+	}
 	if len(cfg.Upstream.DNSServers) == 0 {
 		return errors.New("upstream.dns_servers 不能为空")
 	}
@@ -71,6 +75,25 @@ func validateConfig(cfg *Config) error {
 		if net.ParseIP(strings.TrimSpace(rule.Target)) == nil {
 			return fmt.Errorf("rewrite.rules[%d] target 必须是有效 IP", idx)
 		}
+	}
+	return nil
+}
+
+func validateWebAddress(addr string) error {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return nil
+	}
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("server.web_address 无效: %w", err)
+	}
+	if strings.EqualFold(host, "localhost") {
+		return nil
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || !ip.IsLoopback() {
+		return errors.New("server.web_address 当前只允许监听 loopback 地址")
 	}
 	return nil
 }

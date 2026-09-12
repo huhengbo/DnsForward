@@ -1,6 +1,7 @@
 server:
   address: "127.0.0.1:53"
   metrics_address: "127.0.0.1:9090"
+  web_address: "127.0.0.1:8080"
   allow_cidrs:
     - "127.0.0.0/8"
     - "::1/128"

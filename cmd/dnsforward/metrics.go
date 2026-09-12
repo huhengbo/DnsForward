@@ -47,16 +47,22 @@ func ensureMetricsRegistered() {
 	})
 }
 
+func metricsHandler() http.Handler {
+	return promhttp.HandlerFor(metricsRegistry, promhttp.HandlerOpts{EnableOpenMetrics: true})
+}
+
+func healthHandler(w http.ResponseWriter, _ *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("ok"))
+}
+
 func startMetricsServer(addr string) {
 	if strings.TrimSpace(addr) == "" {
 		return
 	}
 	mux := http.NewServeMux()
-	mux.Handle("/metrics", promhttp.HandlerFor(metricsRegistry, promhttp.HandlerOpts{EnableOpenMetrics: true}))
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok"))
-	})
+	mux.Handle("/metrics", metricsHandler())
+	mux.HandleFunc("/healthz", healthHandler)
 	server := &http.Server{
 		Addr:              addr,
 		Handler:           mux,
