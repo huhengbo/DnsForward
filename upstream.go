@@ -26,7 +26,7 @@ func forwardToUpstreamParallel(rt *runtimeConfig, r *dns.Msg) *dns.Msg {
 		wg.Add(1)
 		go func(ep upstreamEndpoint) {
 			defer wg.Done()
-			client := &dns.Client{SingleInflight: true, Timeout: rt.upstreamTimeout, Net: ep.Network}
+			client := &dns.Client{Timeout: rt.upstreamTimeout, Net: ep.Network}
 			if ep.Network == "tcp-tls" {
 				tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
 				serverName := ep.ServerName
