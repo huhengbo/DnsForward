@@ -68,6 +68,7 @@ func main() {
 	if metricsAddr := strings.TrimSpace(cfg.Server.MetricsAddress); metricsAddr != "" {
 		startMetricsServer(metricsAddr)
 	}
+	startWebServer(cfg.Server.WebAddress)
 
 	reloadChan := make(chan os.Signal, 1)
 	signal.Notify(reloadChan, syscall.SIGHUP)
