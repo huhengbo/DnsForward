@@ -1,4 +1,18 @@
 .DS_Store
 .idea/
+.vscode/
+
+# Local runtime files
+config.yaml
+*.log
+*.pid
+
+# Build and release artifacts
 DnsForward
+dnsforward
+dnsforward.exe
+bin/
+dist/
 Releases/
+coverage.out
+*.test
