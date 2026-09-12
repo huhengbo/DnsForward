@@ -131,21 +131,20 @@ func loadRuleSet(rule Rule, client *http.Client, attempts int) ([]Rule, error) {
 	return parseRuleSetContent(lines, rule.Target), nil
 }
 
-func loadAndMergeRules(rules []Rule, client *http.Client, attempts int) []Rule {
+func loadAndMergeRules(rules []Rule, client *http.Client, attempts int) ([]Rule, error) {
 	var merged []Rule
 	for _, rule := range rules {
 		if rule.Type == "RULE-SET" {
 			parsedRules, err := loadRuleSet(rule, client, attempts)
 			if err != nil {
-				serviceLogger(fmt.Sprintf("加载规则文件失败！: %v", err), 31, false)
-				continue
+				return nil, fmt.Errorf("加载 RULE-SET %q 失败: %w", rule.Value, err)
 			}
 			merged = append(merged, parsedRules...)
 		} else {
 			merged = append(merged, rule)
 		}
 	}
-	return merged
+	return merged, nil
 }
 
 func buildRuleMatcher(rules []Rule) ruleMatcher {

@@ -192,7 +192,10 @@ func buildRuntimeFromConfig(newCfg Config) (*runtimeConfig, error) {
 		ruleFetchRetry = 3
 	}
 	client := &http.Client{Timeout: ruleFetchTimeout}
-	mergedRules := loadAndMergeRules(newCfg.Rewrite.Rules, client, ruleFetchRetry)
+	mergedRules, err := loadAndMergeRules(newCfg.Rewrite.Rules, client, ruleFetchRetry)
+	if err != nil {
+		return nil, err
+	}
 	matcher := buildRuleMatcher(mergedRules)
 
 	rt := &runtimeConfig{
