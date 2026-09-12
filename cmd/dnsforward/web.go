@@ -29,7 +29,7 @@ const webPage = `<!doctype html>
 <script>
 const $=id=>document.getElementById(id);
 async function request(url,options){const r=await fetch(url,options);const text=await r.text();if(!r.ok)throw new Error(text||r.statusText);return text}
-async function loadStatus(){try{const s=JSON.parse(await request('/api/status'));$('version').textContent=s.version||'dev';$('status').textContent='运行中';$('status').className='status ok';$('summary').textContent=`DNS: ${s.dns_address} · Web: ${s.web_address||'关闭'} · 配置: ${s.config_file}`}catch(e){$('status').textContent='状态获取失败';$('status').className='status error'}}
+async function loadStatus(){try{const s=JSON.parse(await request('/api/status'));$('version').textContent=s.version||'dev';$('status').textContent='运行中';$('status').className='status ok';$('summary').textContent='DNS: '+s.dns_address+' · Web: '+(s.web_address||'关闭')+' · 配置: '+s.config_file}catch(e){$('status').textContent='状态获取失败';$('status').className='status error'}}
 async function loadConfig(){try{$('config').value=await request('/api/config')}catch(e){$('configResult').textContent=e.message;$('configResult').className='error'}}
 async function validateConfig(){try{await request('/api/config/validate',{method:'POST',headers:{'Content-Type':'text/yaml'},body:$('config').value});$('configResult').textContent='配置有效';$('configResult').className='ok'}catch(e){$('configResult').textContent=e.message;$('configResult').className='error'}}
 async function saveConfig(){try{await request('/api/config',{method:'PUT',headers:{'Content-Type':'text/yaml'},body:$('config').value});$('configResult').textContent='已保存并重载';$('configResult').className='ok';loadStatus()}catch(e){$('configResult').textContent=e.message;$('configResult').className='error'}}
